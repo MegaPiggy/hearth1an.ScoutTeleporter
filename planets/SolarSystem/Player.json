@@ -4,6 +4,7 @@
   "Props": {
     "singularities": [
       {
+        "rename": "BlackHoleTeleport",
         "uniqueID": "ProbeTeleportBH",
         "position": {
           "x": 0,

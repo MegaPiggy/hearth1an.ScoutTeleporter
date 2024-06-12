@@ -4,6 +4,7 @@
   "Props": {
     "singularities": [
       {
+        "rename": "WhiteHoleTeleport",
         "uniqueID": "ProbeTeleportWH",
         "position": {
           "x": 0.12,

@@ -7,20 +7,12 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <DebugType>none</DebugType>
+    <DebugType>portable</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="HarmonyX" Version="2.10.0" />
-    <PackageReference Include="OWML" Version="2.3.2" />
-    <PackageReference Include="OuterWildsGameLibs" Version="1.1.12.168" />
-    
-    <Reference Include="NewHorizons">
-      <HintPath>$(OuterWildsModsDirectory)\xen.NewHorizons\NewHorizons.dll</HintPath>
-      <Private>False</Private>
-    </Reference>  
+    <PackageReference Include="OWML" Version="2.13.0" />
+    <PackageReference Include="OuterWildsGameLibs" Version="1.1.15.1018" />  
   </ItemGroup>
   <ItemGroup>
     <None Include="default-config.json">

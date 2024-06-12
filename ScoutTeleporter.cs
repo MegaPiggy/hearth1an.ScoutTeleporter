@@ -1,8 +1,6 @@
-﻿using NewHorizons.Utility;
-using OWML.Common;
+﻿using OWML.Common;
 using OWML.ModHelper;
 using ScoutTeleporter.Utilities.ModAPIs;
-using NewHorizons.Handlers;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -12,128 +10,167 @@ namespace ScoutTeleporter
     {
         public static INewHorizons newHorizonsAPI;
         public static ScoutTeleporter Instance;
-        public static float reset;
-        public ScreenPrompt _teleportPromt;
+        public static bool reset;
+        public ScreenPrompt _teleportPrompt;
+
+        private GameObject _whiteHole;
+        private GameObject _blackHole;
+
+        public GameObject WhiteHole => _whiteHole;
+        public GameObject BlackHole => _blackHole;
+        public OWRigidbody ProbeBody => Locator.GetProbe().GetComponent<OWRigidbody>();
+        public PlayerBody PlayerBody => Locator.GetPlayerBody() as PlayerBody;
+
         private void Awake()
         {
             Instance = this;
         }
+
         private void Start()
         {
-            var newHorizonsAPI = ModHelper.Interaction.GetModApi<INewHorizons>("xen.NewHorizons");
+            newHorizonsAPI = ModHelper.Interaction.TryGetModApi<INewHorizons>("xen.NewHorizons");
             newHorizonsAPI.LoadConfigs(this);
             newHorizonsAPI.GetStarSystemLoadedEvent().AddListener(OnStarSystemLoaded);
-            ModHelper.Console.WriteLine($"{nameof(ScoutTeleporter)} is loaded!", MessageType.Success);            
+            ModHelper.Console.WriteLine($"{nameof(ScoutTeleporter)} is loaded!", MessageType.Success);
         }
-        public void UpdatePromtVisibility()
-        {            
-            if (Locator.GetProbe().IsAnchored() && reset == 0f)
+
+        public void UpdatePromptVisibility()
+        {
+            var probe = Locator.GetProbe();
+
+            if (reset || !probe.enabled)
             {
-                _teleportPromt.VisibilityControllerSetVisibility(_teleportPromt, true);
+                _teleportPrompt.VisibilityControllerSetVisibility(_teleportPrompt, false);
             }
-            if (Locator.GetProbe().IsLaunched() && reset == 0f)
+            else if ((probe.IsAnchored() || probe.IsLaunched()) && !reset)
             {
-                _teleportPromt.VisibilityControllerSetVisibility(_teleportPromt, true);
-            }
-            if (reset != 0f)
-            {
-                _teleportPromt.VisibilityControllerSetVisibility(_teleportPromt, false);
-            }
-            if (Locator.GetProbe().enabled == false)
-            {
-                _teleportPromt.VisibilityControllerSetVisibility(_teleportPromt, false);
+                _teleportPrompt.VisibilityControllerSetVisibility(_teleportPrompt, true);
             }
         }
+
         private void OnStarSystemLoaded(string systemName)
         {
             ModHelper.Console.WriteLine("LOADED SYSTEM " + systemName);
             if (systemName == "SolarSystem")
             {
-                SpawnOnStart();
+                ModHelper.Events.Unity.RunWhen(() => Locator.GetProbe() != null && Locator.GetPlayerTransform() != null, Spawn);
             }
         }
 
-        public void SpawnOnStart()
+        public RelativeLocationData RelativeLocationData => new RelativeLocationData
         {
-            SearchUtilities.Find("Probe_Body/ProbeGravity/Props_NOM_GravityCrystal").transform.localScale = new UnityEngine.Vector3(0.1f, 0.1f, 0.1f);
-            SearchUtilities.Find("Probe_Body/ProbeGravity/Props_NOM_GravityCrystal_Base").transform.localScale = new UnityEngine.Vector3(0.1f, 0.1f, 0.1f);
+            localPosition = BlackHole.transform.InverseTransformPoint(PlayerBody.transform.position),
+            localRotation = Quaternion.Inverse(BlackHole.transform.rotation) * PlayerBody.transform.rotation,
+            localRelativeVelocity = Vector3.zero
+        };
 
-            var WH = SearchUtilities.Find("Probe_Body/WhiteHole");
-            var BH = SearchUtilities.Find("Player_Body/BlackHole");
+        public void WarpToProbe()
+        {
+            if (_whiteHole == null) return;
+            if (PlayerState.IsInsideShip() || PlayerState.IsInsideShuttle()) return;
+            GlobalMessenger.FireEvent("PlayerEnterBlackHole");
+            _whiteHole.GetComponentInChildren<WhiteHoleVolume>(true).ReceiveWarpedBody(PlayerBody, RelativeLocationData);
+        }
+
+        public void Spawn()
+        {
+            var probeTransform = Locator.GetProbe().transform;
+            probeTransform.Find("ProbeGravity/Props_NOM_GravityCrystal").transform.localScale = new UnityEngine.Vector3(0.1f, 0.1f, 0.1f);
+            probeTransform.Find("ProbeGravity/Props_NOM_GravityCrystal_Base").transform.localScale = new UnityEngine.Vector3(0.1f, 0.1f, 0.1f);
+
+            var WH = probeTransform.Find("WhiteHoleTeleport").gameObject;
+            var BH = Locator.GetPlayerTransform().Find("BlackHoleTeleport").gameObject;
+
+            _whiteHole = WH;
+            _blackHole = BH;
+
+            Object.DestroyImmediate(BH.GetComponentInChildren<BlackHoleVolume>(true).gameObject);
+
+            BH.transform.parent = probeTransform.parent;
 
             WH.SetActive(false);
             BH.SetActive(false);
 
-            BH.transform.name = "BHTeleport";
-            BH.transform.parent = SearchUtilities.Find("Probe_Body").transform.parent;
-
             ScoutTeleporter.Instance.ModHelper.Events.Unity.FireOnNextUpdate(() =>
             {
-                _teleportPromt = new ScreenPrompt(TranslationHandler.GetTranslation("TELEPORT_PROMT", TranslationHandler.TextType.UI) + " <CMD>", ImageUtilities.GetButtonSprite(KeyCode.T));
-                Locator.GetPromptManager().AddScreenPrompt(_teleportPromt, PromptPosition.UpperRight, false);
-                reset = 0;
+                _teleportPrompt = new ScreenPrompt(newHorizonsAPI.GetTranslationForUI("TELEPORT_PROMPT") + " <CMD>", GetButtonSprite(KeyCode.T));
+                Locator.GetPromptManager().AddScreenPrompt(_teleportPrompt, PromptPosition.UpperRight, false);
+                reset = false;
             });
             ModHelper.Console.WriteLine("Parenting done!", MessageType.Success);
-        }       
+        }
 
-        public void EnableWh()
-        {    
-            var WH = SearchUtilities.Find("Probe_Body/WhiteHole");
-            WH.SetActive(true);
-            Invoke("DisableWh", 0.5f);            
-        }
-        public void DisableWh()
+        public void EnableWhiteHole()
         {
-            var WH = SearchUtilities.Find("Probe_Body/WhiteHole");
-            WH.SetActive(false);            
+            WhiteHole.SetActive(true);
+            Invoke("DisableWhiteHole", 0.5f);
         }
-        public void EnableBh()
+
+        public void DisableWhiteHole()
         {
-            var probeBody = Locator.GetProbe().GetComponent<OWRigidbody>();
-            var playerBody = Locator.GetPlayerBody();
+            WhiteHole.SetActive(false);
+        }
+
+        public void EnableBlackHole()
+        {
+            var probeBody = ProbeBody;
+            var playerBody = PlayerBody;
 
             playerBody._currentAngularVelocity = probeBody._currentAngularVelocity;
             playerBody._currentAccel = probeBody._currentAccel;
-            playerBody._currentVelocity = new UnityEngine.Vector3 (0f, 0f, 0f);
-            playerBody._currentVelocity = probeBody._currentVelocity;                      
+            playerBody._currentVelocity = new UnityEngine.Vector3(0f, 0f, 0f);
+            playerBody._currentVelocity = probeBody._currentVelocity;
 
-            var BH = SearchUtilities.Find("BHTeleport");
-            BH.transform.position = Locator.GetPlayerBody().transform.position;
+            var BH = BlackHole;
+            BH.transform.position = playerBody.transform.position;
             BH.SetActive(true);
 
-            reset = 1f;
+            Invoke("WarpToProbe", 0.25f);
 
-            Invoke("DisableBh", 0.5f);
+            reset = true;
+
+            Invoke("DisableBlackHole", 0.5f);
         }
-        public void DisableBh()
+
+        public void DisableBlackHole()
         {
-            var BH = SearchUtilities.Find("BHTeleport");
-            BH.SetActive(false);
-            reset = 1f;
+            BlackHole.SetActive(false);
+            reset = true;
         }
+
         public void ResetTimer()
         {
-            reset = 0f;
+            reset = false;
             Locator.GetPlayerAudioController().PlayEnterLaunchCodes();
         }
+
         public void Update()
         {
-            if (reset == 0f && Locator.GetProbe().IsAnchored() && Locator.GetPlayerBody().GetComponent<PlayerBody>()._activeRigidbody == Locator.GetPlayerBody().GetComponent<Rigidbody>() && Keyboard.current[Key.T].wasReleasedThisFrame)
-            {
-                Invoke("EnableWh", 0.2f);
-                Invoke("EnableBh", 0.3f);
-                Invoke("ResetTimer", 5f);
-                ModHelper.Console.WriteLine("Teleported!", MessageType.Success);
+            var probe = Locator.GetProbe();
+            var playerBody = PlayerBody;
 
-            }
-            if (reset == 0f && Locator.GetProbe().IsLaunched() && Locator.GetPlayerBody().GetComponent<PlayerBody>()._activeRigidbody == Locator.GetPlayerBody().GetComponent<Rigidbody>() && Keyboard.current[Key.T].wasReleasedThisFrame)
+            if (probe == null || playerBody == null) return;
+
+            var playerRigidbody = playerBody.GetComponent<Rigidbody>();
+
+            if (!reset && (probe.IsAnchored() || probe.IsLaunched()) && playerBody._activeRigidbody == playerRigidbody && Keyboard.current[Key.T].wasReleasedThisFrame)
             {
-                Invoke("EnableWh", 0.2f);
-                Invoke("EnableBh", 0.3f);
+                Invoke("EnableWhiteHole", 0.2f);
+                Invoke("EnableBlackHole", 0.3f);
                 Invoke("ResetTimer", 5f);
                 ModHelper.Console.WriteLine("Teleported!", MessageType.Success);
             }
-            UpdatePromtVisibility();
+
+            UpdatePromptVisibility();
+        }
+
+        public static Sprite GetButtonSprite(JoystickButton button) => GetButtonSprite(ButtonPromptLibrary.SharedInstance.GetButtonTexture(button));
+        public static Sprite GetButtonSprite(KeyCode key) => GetButtonSprite(ButtonPromptLibrary.SharedInstance.GetButtonTexture(key));
+        private static Sprite GetButtonSprite(Texture2D texture)
+        {
+            var sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100, 0, SpriteMeshType.FullRect, Vector4.zero, false);
+            sprite.name = texture.name;
+            return sprite;
         }
     }
 }
